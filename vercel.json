@@ -18,5 +18,10 @@
   ],
   "env": {
     "PYTHON_BACKEND_URL": "https://tu-backend-url.railway.app"
+  },
+  "functions": {
+    "frontend/src/app/api/chat/route.ts": {
+      "maxDuration": 30
+    }
   }
 } 

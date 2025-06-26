@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import ChatInterface from '@/components/ChatInterface';
 import { chatService } from '@/services/chatService';
 
@@ -16,10 +15,10 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Header simplificado */}
-      <header className="bg-gray-800 border-b border-gray-700">
-        <div className="max-w-4xl mx-auto px-4 py-4">
+    <main className="h-screen bg-gray-900 text-white flex flex-col">
+      {/* Header simple */}
+      <header className="bg-gray-800 border-b border-gray-700 p-4">
+        <div className="max-w-4xl mx-auto">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">CH</span>
@@ -34,12 +33,12 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Chat Area - Ocupa todo el espacio disponible */}
-      <main className="max-w-4xl mx-auto px-4 py-6">
-        <div className="h-[calc(100vh-120px)]">
+      {/* Chat Area - Ocupa todo el espacio restante con container centrado */}
+      <div className="flex-1 p-4">
+        <div className="max-w-4xl mx-auto h-full">
           <ChatInterface onSendMessage={handleSendMessage} />
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }

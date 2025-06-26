@@ -1,0 +1,52 @@
+{
+  "name": "codehelper-net",
+  "version": "1.0.0",
+  "description": "Chatbot especializado en C# y .NET con RAG y frontend moderno",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && python3 api_server.py",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm start",
+    "install:all": "npm run install:backend && npm run install:frontend",
+    "install:backend": "pip install -r backend/requirements.txt",
+    "install:frontend": "cd frontend && npm install",
+    "setup": "npm run install:all && npm run generate:db",
+    "generate:db": "cd backend && python improved_vector_db.py",
+    "test": "cd backend && python -m pytest",
+    "lint": "cd frontend && npm run lint",
+    "format": "cd frontend && npm run format",
+    "deploy": "chmod +x scripts/deploy.sh && ./scripts/deploy.sh",
+    "start:linux": "chmod +x scripts/start_chatbot.sh && ./scripts/start_chatbot.sh",
+    "start:windows": "scripts\\start_chatbot.bat"
+  },
+  "keywords": [
+    "chatbot",
+    "csharp",
+    "dotnet",
+    "rag",
+    "ai",
+    "machine-learning",
+    "nextjs",
+    "python",
+    "flask"
+  ],
+  "author": "CodeHelperNET Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tu-usuario/codehelper-net.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tu-usuario/codehelper-net/issues"
+  },
+  "homepage": "https://github.com/tu-usuario/codehelper-net#readme"
+} 

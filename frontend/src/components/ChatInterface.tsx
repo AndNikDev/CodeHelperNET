@@ -26,14 +26,17 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isLoading]);
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -58,7 +61,7 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
+    } catch {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: 'Lo siento, hubo un error al procesar tu mensaje. Por favor, intenta de nuevo.',
@@ -92,7 +95,7 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
   return (
     <div className="flex flex-col h-full bg-gray-800 rounded-lg shadow-xl border border-gray-700">
       {/* Header del chat */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800 rounded-t-lg">
+      <div className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800 rounded-t-lg flex-shrink-0">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-blue-600 rounded-lg">
             <Bot className="w-5 h-5 text-white" />
@@ -107,20 +110,27 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
         </div>
       </div>
 
-      {/* Área de mensajes */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-900">
+      {/* Área de mensajes con scroll interno - Altura fija */}
+      <div 
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-900 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
+        style={{ 
+          maxHeight: 'calc(100vh - 200px)', // Altura máxima calculada
+          minHeight: '400px' // Altura mínima
+        }}
+      >
         {messages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`flex items-start space-x-3 max-w-[85%] ${
+              className={`flex items-start space-x-3 max-w-[90%] ${
                 message.role === 'user' ? 'flex-row-reverse space-x-reverse' : ''
               }`}
             >
               <div
-                className={`p-2 rounded-full ${
+                className={`p-2 rounded-full flex-shrink-0 ${
                   message.role === 'user'
                     ? 'bg-blue-600 text-white'
                     : 'bg-gray-600 text-gray-200'
@@ -139,9 +149,9 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
                     : 'bg-gray-700 text-gray-100 border border-gray-600'
                 }`}
               >
-                <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
+                <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">{message.content}</div>
                 <div
-                  className={`text-xs mt-2 ${
+                  className={`text-xs mt-3 ${
                     message.role === 'user' ? 'text-blue-200' : 'text-gray-400'
                   }`}
                 >
@@ -155,7 +165,7 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
         {isLoading && (
           <div className="flex justify-start">
             <div className="flex items-start space-x-3">
-              <div className="p-2 rounded-full bg-gray-600 text-gray-200">
+              <div className="p-2 rounded-full bg-gray-600 text-gray-200 flex-shrink-0">
                 <Bot className="w-4 h-4" />
               </div>
               <div className="p-4 rounded-lg bg-gray-700 border border-gray-600">
@@ -171,8 +181,8 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Área de input */}
-      <div className="p-4 border-t border-gray-700 bg-gray-800 rounded-b-lg">
+      {/* Área de input - Siempre visible en la parte inferior */}
+      <div className="p-6 border-t border-gray-700 bg-gray-800 rounded-b-lg flex-shrink-0">
         <div className="flex space-x-3">
           <textarea
             value={inputMessage}
@@ -187,7 +197,7 @@ export default function ChatInterface({ onSendMessage }: ChatInterfaceProps) {
           <button
             onClick={handleSendMessage}
             disabled={!inputMessage.trim() || isLoading}
-            className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
           >
             <Send className="w-5 h-5" />
           </button>

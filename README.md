@@ -12,6 +12,42 @@ Un chatbot inteligente especializado en C# y .NET, desarrollado con tecnologías
 - **Base de conocimientos** con 3,073 chunks de información especializada
 - **Multiplataforma** - Compatible con Windows, Linux y macOS
 - **Despliegue fácil** - Configurado para Vercel, Railway, Render y más
+- **Estructura limpia** - Organización modular y profesional
+
+## 📁 Estructura del Proyecto
+
+```
+CodeHelperNET/
+├── backend/                    # Backend Python
+│   ├── api_server.py          # Servidor de desarrollo
+│   ├── api_server_production.py # Servidor para producción
+│   ├── rag_chatbot.py         # Lógica principal del chatbot
+│   ├── improved_vector_db.py  # Generador de base vectorial
+│   ├── requirements.txt       # Dependencias de desarrollo
+│   ├── requirements_production.txt # Dependencias de producción
+│   ├── Procfile              # Configuración para Railway/Heroku
+│   ├── runtime.txt           # Versión de Python
+│   ├── data/                 # Documentos de conocimiento (76 archivos)
+│   └── vector_db/            # Base de datos vectorial (3,073 chunks)
+├── frontend/                  # Frontend Next.js
+│   ├── package.json
+│   ├── next.config.js
+│   ├── src/
+│   │   ├── app/              # App Router de Next.js
+│   │   ├── components/       # Componentes React
+│   │   └── services/         # Servicios de API
+│   └── public/               # Archivos estáticos
+├── scripts/                   # Scripts de inicio y despliegue
+│   ├── start_chatbot.sh      # Inicio en Linux/macOS
+│   ├── start_chatbot.bat     # Inicio en Windows
+│   └── deploy.sh             # Preparación para despliegue
+├── docs/                      # Documentación
+│   ├── DEPLOYMENT_GUIDE.md   # Guía completa de despliegue
+│   └── Proyecto Final IF7103 2025 Sis.Expertos.pdf
+├── codehelper_env/           # Entorno virtual Python
+├── vercel.json              # Configuración para Vercel
+└── README.md                # Este archivo
+```
 
 ## 🛠️ Tecnologías
 
@@ -59,16 +95,19 @@ codehelper_env\Scripts\activate
 
 #### Instalar dependencias
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 #### Generar la base de datos vectorial
 ```bash
+cd backend
 python improved_vector_db.py
+cd ..
 ```
 
 #### Iniciar el servidor backend
 ```bash
+cd backend
 python api_server.py
 ```
 
@@ -102,13 +141,13 @@ El frontend estará disponible en: http://localhost:3000
 
 **En Linux/macOS:**
 ```bash
-chmod +x start_chatbot.sh
-./start_chatbot.sh
+chmod +x scripts/start_chatbot.sh
+./scripts/start_chatbot.sh
 ```
 
 **En Windows:**
 ```cmd
-start_chatbot.bat
+scripts\start_chatbot.bat
 ```
 
 ### Opción 2: Inicio manual
@@ -117,10 +156,12 @@ start_chatbot.bat
    ```bash
    # Linux/macOS
    source codehelper_env/bin/activate
+   cd backend
    python api_server.py
    
    # Windows
    codehelper_env\Scripts\activate
+   cd backend
    python api_server.py
    ```
 
@@ -137,7 +178,8 @@ start_chatbot.bat
 ### Despliegue Automático
 ```bash
 # Preparar proyecto para despliegue
-./deploy.sh
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
 ```
 
 ### Opciones de Despliegue
@@ -169,8 +211,8 @@ start_chatbot.bat
 - **AWS/GCP/Azure:** Servicios en la nube
 
 ### Documentación Completa
-- 📚 **Guía detallada:** [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
-- 📖 **Configuración rápida:** [DEPLOYMENT_README.md](DEPLOYMENT_README.md)
+- 📚 **Guía detallada:** [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
+- 📖 **Configuración rápida:** [docs/DEPLOYMENT_README.md](docs/DEPLOYMENT_README.md)
 
 ## 🎯 Uso del Chatbot
 
@@ -242,8 +284,8 @@ NEXT_PUBLIC_API_URL=/api                  # URL de la API del frontend
 
 ### Personalización del Chatbot
 Puedes modificar:
-- `rag_chatbot.py` - Lógica del chatbot
-- `improved_vector_db.py` - Generación de embeddings
+- `backend/rag_chatbot.py` - Lógica del chatbot
+- `backend/improved_vector_db.py` - Generación de embeddings
 - `frontend/src/components/ChatInterface.tsx` - Interfaz del chat
 
 ## 🐛 Solución de Problemas
@@ -257,10 +299,10 @@ Puedes modificar:
 - Verifica que no haya problemas de CORS
 
 ### Error: "Base de datos vectorial no encontrada"
-- Ejecuta `python improved_vector_db.py` para regenerar la base
+- Ejecuta `cd backend && python improved_vector_db.py` para regenerar la base
 
 ### Error: "Dependencias faltantes"
-- Ejecuta `pip install -r requirements.txt`
+- Ejecuta `pip install -r backend/requirements.txt`
 - Verifica que el entorno virtual esté activado
 
 ### Problemas específicos de Windows
