@@ -1,12 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    appDir: true,
+  },
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: '/api/:path*',
+        destination: `${process.env.PYTHON_BACKEND_URL || 'http://localhost:5000'}/api/:path*`,
       },
     ];
+  },
+  env: {
+    PYTHON_BACKEND_URL: process.env.PYTHON_BACKEND_URL || 'http://localhost:5000',
   },
   async headers() {
     return [

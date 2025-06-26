@@ -11,6 +11,7 @@ Un chatbot inteligente especializado en C# y .NET, desarrollado con tecnologías
 - **API REST** para integración fácil
 - **Base de conocimientos** con 3,073 chunks de información especializada
 - **Multiplataforma** - Compatible con Windows, Linux y macOS
+- **Despliegue fácil** - Configurado para Vercel, Railway, Render y más
 
 ## 🛠️ Tecnologías
 
@@ -131,6 +132,46 @@ start_chatbot.bat
 
 3. **Abrir navegador:** http://localhost:3000
 
+## 🌐 Despliegue en Producción
+
+### Despliegue Automático
+```bash
+# Preparar proyecto para despliegue
+./deploy.sh
+```
+
+### Opciones de Despliegue
+
+#### 🎯 **Recomendado: Vercel + Railway**
+- **Frontend:** Vercel (excelente para Next.js)
+- **Backend:** Railway (bueno para Python)
+- **Ventajas:** Escalabilidad automática, SSL, CDN global
+
+#### 📋 **Pasos Rápidos:**
+
+1. **Backend en Railway:**
+   - Ve a [railway.app](https://railway.app)
+   - Conecta tu repositorio de GitHub
+   - Railway detectará automáticamente la configuración
+
+2. **Frontend en Vercel:**
+   - Ve a [vercel.com](https://vercel.com)
+   - Importa tu repositorio
+   - Configura `PYTHON_BACKEND_URL` con tu URL de Railway
+
+3. **Configurar URLs:**
+   - Actualiza `vercel.json` con tu URL de Railway
+   - Configura variables de entorno en Vercel
+
+#### 🔧 **Otras Opciones:**
+- **Render:** Todo en un solo servicio
+- **Heroku:** Plataforma tradicional
+- **AWS/GCP/Azure:** Servicios en la nube
+
+### Documentación Completa
+- 📚 **Guía detallada:** [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+- 📖 **Configuración rápida:** [DEPLOYMENT_README.md](DEPLOYMENT_README.md)
+
 ## 🎯 Uso del Chatbot
 
 ### Interfaz Web
@@ -144,6 +185,8 @@ start_chatbot.bat
 - "¿Qué son los patrones de diseño más comunes?"
 - "¿Cómo implementar Entity Framework Core?"
 - "¿Cuáles son las mejores prácticas de seguridad en .NET?"
+- "dame un ejemplo de código de .NET"
+- "muéstrame un ejemplo de LINQ"
 
 ### API REST
 También puedes usar el chatbot programáticamente:
@@ -203,20 +246,6 @@ Puedes modificar:
 - `improved_vector_db.py` - Generación de embeddings
 - `frontend/src/components/ChatInterface.tsx` - Interfaz del chat
 
-## 🌐 Despliegue
-
-### Despliegue en Vercel (Frontend)
-1. Conecta tu repositorio con Vercel
-2. Configura las variables de entorno en Vercel
-3. El despliegue será automático en cada push
-
-### Despliegue del Backend
-El backend puede desplegarse en:
-- **Render** - Servicio gratuito para Python
-- **Railway** - Despliegue fácil
-- **Heroku** - Plataforma tradicional
-- **AWS/GCP/Azure** - Servicios en la nube
-
 ## 🐛 Solución de Problemas
 
 ### Error: "Chatbot no inicializado"
@@ -243,6 +272,11 @@ El backend puede desplegarse en:
 - **Error de permisos:** Usa `sudo` si es necesario
 - **Error de dependencias:** Instala `python3-dev` y `build-essential`
 - **Error de encoding:** Configura `export LANG=en_US.UTF-8`
+
+### Problemas de Despliegue
+- **Error de memoria:** Los modelos de ML requieren RAM suficiente
+- **Timeout:** La primera carga puede tardar, implementa health checks
+- **CORS:** Verifica que `flask-cors` esté configurado correctamente
 
 ## 📊 Rendimiento
 
