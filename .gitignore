@@ -153,7 +153,7 @@ temp/
 *.old
 
 # Test files
-.coverage
+.coverages
 htmlcov/
 .tox/
 .pytest_cache/
