@@ -1,0 +1,32 @@
+# Librerías principales del proyecto
+sentence-transformers
+chromadb
+numpy
+pandas
+scikit-learn
+tiktoken
+safetensors
+
+# Flask y dependencias web
+flask
+flask-cors
+
+# Utilidades adicionales
+python-dotenv
+requests
+urllib3
+certifi
+beautifulsoup4
+
+# Para procesamiento de texto y datos
+regex
+typing-extensions
+pathlib
+
+# Dependencias de ChromaDB
+sqlalchemy
+grpcio
+
+# Dependencias específicas de sentence-transformers
+torch
+accelerate 

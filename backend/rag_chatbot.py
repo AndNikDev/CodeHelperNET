@@ -3,15 +3,15 @@ import re
 from typing import List, Dict, Any
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from chromadb import PersistentClient
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
-import torch
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-import numpy as np
+import requests
+from bs4 import BeautifulSoup
+import urllib.parse
+import time
+import json
 
 class RAGChatbot:
     def __init__(self, db_path: str = "./vector_db"):
-        """Inicializar el chatbot RAG completo"""
+        """Inicializar el chatbot RAG completo con Ollama"""
         # Ajustar ruta para la nueva estructura
         if not os.path.isabs(db_path):
             db_path = os.path.join(os.path.dirname(__file__), db_path)
@@ -28,106 +28,17 @@ class RAGChatbot:
         # Cross-encoder para re-ranking (mejora la calidad de resultados)
         self.cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
         
-        # Modelo LLM para generación (usando un modelo más pequeño pero efectivo)
-        self.setup_llm()
+        # Inicializar Ollama
+        self.ollama = OllamaLLM()
         
-        # Traductor para respuestas
-        self.translator = pipeline("translation_en_to_es", model="Helsinki-NLP/opus-mt-en-es")
+        # Inicializar buscador web
+        self.web_searcher = WebSearcher()
         
-        # Templates de prompts mejorados
-        self.setup_prompts()
-        
-    def setup_llm(self):
-        """Configurar modelo LLM para generación"""
-        try:
-            # Por ahora, usar solo modo de recuperación para evitar problemas
-            print("Usando modo de solo recuperación para mayor estabilidad...")
-            self.model = None
-            self.tokenizer = None
-            return
-            
-            # Código original comentado para referencia
-            # model_name = "microsoft/DialoGPT-small"
-            # self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            # self.model = AutoModelForCausalLM.from_pretrained(
-            #     model_name,
-            #     torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            #     device_map="auto" if torch.cuda.is_available() else "cpu"
-            # )
-            # 
-            # if self.tokenizer.pad_token is None:
-            #     self.tokenizer.pad_token = self.tokenizer.eos_token
-            # 
-            # self.model.config.pad_token_id = self.tokenizer.pad_token_id
-            
-        except Exception as e:
-            print(f"Error cargando modelo LLM: {e}")
-            print("Usando modo de solo recuperación...")
-            self.model = None
-            self.tokenizer = None
-    
-    def setup_prompts(self):
-        """Configurar templates de prompts mejorados para respuestas más limpias"""
-        self.prompts = {
-            'code_example': PromptTemplate(
-                input_variables=["context", "question"],
-                template="""Eres un experto en C# y .NET. El usuario está pidiendo un ejemplo de código. Proporciona una respuesta clara y útil.
-
-Contexto relevante:
-{context}
-
-Pregunta del usuario: {question}
-
-Responde de manera directa y útil. Si hay ejemplos de código en el contexto, preséntalos de forma clara. Si no hay ejemplos específicos, proporciona información útil sobre el tema.
-
-Respuesta:"""
-            ),
-            'concept_explanation': PromptTemplate(
-                input_variables=["context", "question"],
-                template="""Eres un profesor experto en C# y .NET. Explica el concepto solicitado de manera clara y directa.
-
-Contexto relevante:
-{context}
-
-Concepto a explicar: {question}
-
-Proporciona una explicación clara, concisa y fácil de entender. Incluye ejemplos prácticos cuando sea útil.
-
-Explicación:"""
-            ),
-            'syntax_help': PromptTemplate(
-                input_variables=["context", "question"],
-                template="""Eres un asistente de programación especializado en C#. Ayuda con la sintaxis solicitada.
-
-Contexto relevante:
-{context}
-
-Pregunta sobre sintaxis: {question}
-
-Proporciona la sintaxis correcta y ejemplos de uso claros. Sé directo y útil.
-
-Respuesta:"""
-            ),
-            'general_help': PromptTemplate(
-                input_variables=["context", "question"],
-                template="""Eres un asistente experto en C# y .NET. Responde la pregunta del usuario de manera útil y clara.
-
-Contexto relevante:
-{context}
-
-Pregunta: {question}
-
-Proporciona una respuesta directa y útil. Si hay información relevante en el contexto, úsala. Si no, proporciona información general útil sobre C# y .NET.
-
-Respuesta:"""
-            )
-        }
-    
     def classify_question(self, question: str) -> str:
-        """Clasificar el tipo de pregunta para usar el prompt apropiado - MEJORADO"""
+        """Clasificar el tipo de pregunta para usar el prompt apropiado"""
         question_lower = question.lower()
         
-        # Palabras clave para ejemplos de código (expanded)
+        # Palabras clave para ejemplos de código
         code_keywords = [
             'ejemplo', 'código', 'implementar', 'cómo hacer', 'muestra', 'muéstrame',
             'dame', 'déjame', 'quiero ver', 'necesito', 'ayúdame con', 'cómo crear',
@@ -137,112 +48,133 @@ Respuesta:"""
             'cómo implementar', 'cómo usar', 'cómo trabajar con'
         ]
         
-        # Palabras clave para explicaciones de conceptos (expanded)
-        concept_keywords = [
-            'qué es', 'explicar', 'concepto', 'definir', 'significa', 'para qué sirve',
-            'cuál es', 'describe', 'características', 'ventajas', 'desventajas',
-            'definición', 'explicación', 'qué significa', 'qué hace', 'cómo funciona',
-            'en qué consiste', 'qué representa', 'qué implica'
+        # Palabras clave para ciclos específicos
+        loop_keywords = [
+            'for', 'while', 'do while', 'foreach', 'bucle', 'ciclo', 'loop',
+            'iterar', 'iteración', 'repetir', 'recorrer', 'contador'
         ]
         
-        # Palabras clave para sintaxis (expanded)
-        syntax_keywords = [
-            'sintaxis', 'syntax', 'formato', 'escribir', 'declarar', 'cómo declarar',
-            'estructura', 'palabra clave', 'keyword', 'operador', 'cómo se escribe',
-            'cómo se declara', 'cómo se define', 'cómo se estructura', 'cómo se usa',
-            'cómo se implementa', 'cómo se crea', 'cómo se define'
+        # Palabras clave para bases de datos
+        db_keywords = [
+            'base de datos', 'database', 'sql', 'conectar', 'conexión', 'entity framework',
+            'ado.net', 'linq', 'query', 'consulta', 'tabla', 'registro', 'insertar',
+            'actualizar', 'eliminar', 'select', 'insert', 'update', 'delete'
         ]
         
-        # Verificar si es una pregunta sobre ejemplos de código
-        if any(keyword in question_lower for keyword in code_keywords):
+        # Palabras clave para patrones de diseño
+        pattern_keywords = [
+            'patrón', 'pattern', 'singleton', 'factory', 'observer', 'strategy',
+            'command', 'adapter', 'decorator', 'facade', 'proxy', 'template method',
+            'builder', 'prototype', 'chain of responsibility', 'mediator', 'memento'
+        ]
+        
+        # Clasificar la pregunta
+        if any(word in question_lower for word in loop_keywords):
+            return 'loop_specific'
+        elif any(word in question_lower for word in db_keywords):
+            return 'database_specific'
+        elif any(word in question_lower for word in pattern_keywords):
+            return 'pattern_specific'
+        elif any(word in question_lower for word in code_keywords):
             return 'code_example'
-        
-        # Verificar si es una pregunta sobre conceptos
-        if any(keyword in question_lower for keyword in concept_keywords):
-            return 'concept_explanation'
-        
-        # Verificar si es una pregunta sobre sintaxis
-        if any(keyword in question_lower for keyword in syntax_keywords):
-            return 'syntax_help'
-        
-        # Verificar patrones específicos que indican solicitud de ejemplos
-        if any(pattern in question_lower for pattern in [
-            'cómo crear', 'cómo hacer', 'cómo implementar', 'cómo usar',
-            'cómo trabajar', 'cómo desarrollar', 'cómo programar'
-        ]):
-            return 'code_example'
-        
-        # Verificar si la pregunta contiene palabras que sugieren ejemplos
-        if any(word in question_lower for word in ['ejemplo', 'código', 'muestra', 'dame', 'muéstrame']):
-            return 'code_example'
-        
-        # Por defecto, usar ayuda general
-        return 'general_help'
+        else:
+            return 'general_help'
     
     def retrieve_relevant_chunks(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
-        """Recuperar chunks relevantes usando embeddings - MEJORADO"""
-        # Generar embedding de la consulta
-        query_embedding = self.embedding_model.encode(query).tolist()
-        
-        # Búsqueda inicial con más resultados
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results * 3  # Obtener más resultados para re-ranking
-        )
-        
-        # Re-ranking con cross-encoder
-        if len(results['documents'][0]) > 0:
-            pairs = [[query, doc] for doc in results['documents'][0]]
-            scores = self.cross_encoder.predict(pairs)
+        """Recuperar chunks relevantes de la base de datos vectorial"""
+        try:
+            # Generar embedding de la consulta
+            query_embedding = self.embedding_model.encode(query).tolist()
             
-            # Combinar documentos con scores
-            doc_scores = list(zip(results['documents'][0], scores, results['metadatas'][0]))
-            doc_scores.sort(key=lambda x: x[1], reverse=True)
+            # Buscar en la base de datos
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results
+            )
             
-            # Retornar los mejores resultados con umbral más bajo
-            top_results = []
-            for doc, score, metadata in doc_scores[:n_results]:
-                # Umbral más bajo para capturar más resultados útiles
-                if score > 0.3:  # Reducido de 0.5 a 0.3
-                    top_results.append({
+            # Procesar resultados
+            chunks = []
+            if results['documents'] and results['documents'][0]:
+                for i, doc in enumerate(results['documents'][0]):
+                    chunk = {
                         'content': doc,
-                        'score': score,
-                        'metadata': metadata
-                    })
+                        'metadata': results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {},
+                        'distance': results['distances'][0][i] if results['distances'] and results['distances'][0] else 0
+                    }
+                    chunks.append(chunk)
             
-            return top_results
-        
-        return []
+            return chunks
+            
+        except Exception as e:
+            print(f"Error recuperando chunks: {e}")
+            return []
     
     def clean_context(self, chunks: List[Dict[str, Any]]) -> str:
-        """Limpiar y preparar el contexto para el prompt - MEJORADO"""
-        context_parts = []
+        """Limpiar y formatear el contexto de los chunks"""
+        if not chunks:
+            return ""
         
-        for chunk in chunks:
-            # Limpiar el contenido del chunk
-            content = chunk['content']
-            
-            # Remover caracteres extraños y normalizar
-            content = re.sub(r'[^\w\s\.\,\;\:\!\?\(\)\[\]\{\}\+\-\*\/\=\<\>\"\'\n\r\t]', '', content)
-            content = re.sub(r'\s+', ' ', content)
-            content = content.strip()
-            
-            # Umbral más bajo para incluir más contenido
-            if chunk['score'] > 0.3 and len(content) > 20:  # Reducido de 0.5 a 0.3
-                context_parts.append(content)
+        # Ordenar por relevancia (menor distancia = más relevante)
+        chunks.sort(key=lambda x: x.get('distance', 1.0))
+        
+        # Tomar los 3 chunks más relevantes
+        top_chunks = chunks[:3]
+        
+        context_parts = []
+        for chunk in top_chunks:
+            content = chunk.get('content', '')
+            if content and len(content.strip()) > 50:  # Solo chunks con contenido significativo
+                context_parts.append(content.strip())
         
         return "\n\n".join(context_parts)
     
-    def generate_response(self, context: str, question: str, question_type: str) -> str:
-        """Generar respuesta usando el modelo LLM o modo de recuperación - MEJORADO"""
-        if self.model is None:
-            # Modo de solo recuperación - proporcionar respuestas estructuradas
-            if not context:
-                # Respuesta más útil cuando no hay contexto
-                if question_type == 'code_example':
-                    return """Aquí tienes un ejemplo básico de código en C# y .NET:
+    def chat(self, question: str) -> str:
+        """Método principal para chatear con el bot"""
+        try:
+            print(f"Procesando pregunta: {question}")
+            
+            # Clasificar la pregunta
+            question_type = self.classify_question(question)
+            print(f"Tipo de pregunta detectado: {question_type}")
+            
+            # Buscar información local
+            local_chunks = self.retrieve_relevant_chunks(question, n_results=5)
+            local_context = self.clean_context(local_chunks)
+            
+            # Buscar información web si es necesario
+            web_context = ""
+            if not local_context or len(local_context) < 100:
+                print("Buscando información web...")
+                web_results = self.web_searcher.search_web(question, max_results=2)
+                if web_results:
+                    web_context = "\n\n".join([result['content'] for result in web_results])
+            
+            # Combinar contextos
+            full_context = f"{local_context}\n\n{web_context}".strip()
+            
+            # Generar respuesta con Ollama
+            response = self.ollama.generate_response(question, full_context, question_type)
+            
+            if not response or len(response) < 20:
+                # Fallback local
+                response = self.generate_local_fallback(question, full_context)
+            
+            return response
+            
+        except Exception as e:
+            print(f"Error en chat: {e}")
+            return f"Lo siento, tuve un problema procesando tu pregunta. Error: {str(e)}"
+    
+    def generate_local_fallback(self, question: str, context: str = "") -> str:
+        """Generar respuesta local cuando Ollama falla"""
+        question_lower = question.lower()
+        
+        # Respuestas específicas para preguntas comunes
+        if any(word in question_lower for word in ['hola mundo', 'hello world', 'primer programa']):
+            return """**Hola Mundo en C#**
 
-**Ejemplo de programa básico en C#:**
+Aquí tienes un ejemplo simple de "Hola Mundo" en C#:
+
 ```csharp
 using System;
 
@@ -253,55 +185,142 @@ namespace MiPrimerPrograma
         static void Main(string[] args)
         {
             Console.WriteLine("¡Hola Mundo desde C#!");
-            
-            // Variables y tipos de datos
-            string nombre = "Desarrollador";
-            int edad = 25;
-            double salario = 50000.50;
-            
-            Console.WriteLine($"Nombre: {nombre}");
-            Console.WriteLine($"Edad: {edad}");
-            Console.WriteLine($"Salario: ${salario:F2}");
-            
-            // Estructuras de control
-            if (edad >= 18)
+        }
+    }
+}
+```
+
+**Para ejecutarlo:**
+1. Guarda el código en un archivo `Program.cs`
+2. Abre una terminal en la carpeta del archivo
+3. Ejecuta: `dotnet run`
+
+¡Es así de simple!"""
+        
+        elif any(word in question_lower for word in ['for', 'bucle', 'ciclo', 'loop']):
+            return """**Bucle FOR en C#**
+
+El bucle `for` es una estructura de control que permite ejecutar código un número específico de veces.
+
+**Sintaxis básica:**
+```csharp
+for (inicialización; condición; incremento)
+{
+    // Código a ejecutar
+}
+```
+
+**Ejemplos prácticos:**
+```csharp
+// Imprimir números del 1 al 10
+for (int i = 1; i <= 10; i++)
+{
+    Console.WriteLine($"Número: {i}");
+}
+
+// Recorrer un array
+string[] frutas = {"manzana", "banana", "naranja"};
+for (int i = 0; i < frutas.Length; i++)
+{
+    Console.WriteLine($"Fruta {i + 1}: {frutas[i]}");
+}
+
+// Bucle descendente
+for (int i = 10; i >= 1; i--)
+{
+    Console.WriteLine($"Cuenta regresiva: {i}");
+}
+```
+
+**Cuándo usar FOR:**
+- Cuando conoces el número exacto de iteraciones
+- Para recorrer arrays o colecciones por índice
+- Cuando necesitas control sobre el contador"""
+        
+        elif any(word in question_lower for word in ['while', 'mientras']):
+            return """**Bucle WHILE en C#**
+
+El bucle `while` ejecuta código mientras una condición sea verdadera.
+
+**Sintaxis básica:**
+```csharp
+while (condición)
+{
+    // Código a ejecutar
+}
+```
+
+**Ejemplos prácticos:**
+```csharp
+// Contador simple
+int contador = 0;
+while (contador < 5)
+{
+    Console.WriteLine($"Contador: {contador}");
+    contador++;
+}
+
+// Leer entrada del usuario hasta que sea válida
+string entrada;
+do
+{
+    Console.Write("Ingresa 'salir' para terminar: ");
+    entrada = Console.ReadLine();
+    Console.WriteLine($"Escribiste: {entrada}");
+} while (entrada.ToLower() != "salir");
+```
+
+**Cuándo usar WHILE:**
+- Cuando no conoces el número exacto de iteraciones
+- Para validación de entrada
+- Cuando necesitas ejecutar código al menos una vez (do-while)"""
+        
+        elif any(word in question_lower for word in ['base de datos', 'database', 'sql', 'conectar', 'conexión']):
+            return """**Conexión a Base de Datos en C#**
+
+Para conectar a una base de datos SQL Server en C#:
+
+**Usando ADO.NET:**
+```csharp
+using System.Data.SqlClient;
+
+string connectionString = "Server=miServidor;Database=miBaseDatos;Trusted_Connection=true;";
+
+using (SqlConnection connection = new SqlConnection(connectionString))
+{
+    connection.Open();
+    Console.WriteLine("Conexión exitosa!");
+    
+    string query = "SELECT * FROM Usuarios";
+    using (SqlCommand command = new SqlCommand(query, connection))
+    {
+        using (SqlDataReader reader = command.ExecuteReader())
+        {
+            while (reader.Read())
             {
-                Console.WriteLine("Eres mayor de edad");
-            }
-            
-            // Bucle for
-            for (int i = 1; i <= 5; i++)
-            {
-                Console.WriteLine($"Iteración {i}");
+                Console.WriteLine($"ID: {reader["ID"]}, Nombre: {reader["Nombre"]}");
             }
         }
     }
 }
 ```
 
-**Ejemplo de clase en C#:**
+**Usando Entity Framework Core:**
 ```csharp
-public class Persona
+// En appsettings.json
 {
-    public string Nombre { get; set; }
-    public int Edad { get; set; }
-    
-    public Persona(string nombre, int edad)
-    {
-        Nombre = nombre;
-        Edad = edad;
-    }
-    
-    public void Presentarse()
-    {
-        Console.WriteLine($"Hola, soy {Nombre} y tengo {Edad} años");
-    }
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=miServidor;Database=miBaseDatos;Trusted_Connection=true;"
+  }
 }
-```
 
-¿Te gustaría ver ejemplos más específicos de algún tema en particular?"""
-                elif question_type == 'concept_explanation':
-                    return """Aquí tienes información general sobre C# y .NET:
+// En Startup.cs
+services.AddDbContext<MiContexto>(options =>
+    options.UseSqlServer(Configuration.GetConnectionString("DefaultConnection")));
+```"""
+        
+        elif any(word in question_lower for word in ['qué es', 'que es', 'definir', 'explicar']):
+            return """**C# y .NET**
 
 **C#** es un lenguaje de programación moderno, orientado a objetos y de propósito general desarrollado por Microsoft como parte de la plataforma .NET.
 
@@ -319,151 +338,28 @@ public class Persona
 - Herramientas de desarrollo
 - Soporte para múltiples lenguajes
 
-¿Te gustaría que profundice en algún aspecto específico?"""
-                elif question_type == 'syntax_help':
-                    return """Aquí tienes información sobre la sintaxis básica de C#:
+**Ventajas:**
+- Excelente para desarrollo web con ASP.NET Core
+- Gran ecosistema de librerías
+- Soporte empresarial de Microsoft
+- Multiplataforma (Windows, Linux, macOS)"""
+        
+        else:
+            return f"""Basándome en la información disponible:
 
-**Declaración de variables:**
-```csharp
-int numero = 10;
-string texto = "Hola";
-bool activo = true;
-double precio = 19.99;
-```
+{context[:300] if context else "No encontré información específica en mi base de datos local."}
 
-**Declaración de métodos:**
-```csharp
-public void MetodoVacio() { }
-public int MetodoConRetorno() { return 42; }
-public string MetodoConParametros(string nombre) { return $"Hola {nombre}"; }
-```
-
-**Declaración de clases:**
-```csharp
-public class MiClase
-{
-    public string Propiedad { get; set; }
-    
-    public MiClase() { }
-    
-    public void MiMetodo() { }
-}
-```
-
-¿Necesitas ayuda con alguna sintaxis específica?"""
-                else:
-                    return "No encontré información específica para tu pregunta. ¿Podrías reformularla o ser más específico?"
-            
-            # Crear respuesta estructurada basada en el contexto
-            if question_type == 'code_example':
-                # Para ejemplos de código - respuesta más específica
-                return f"Aquí tienes información relevante con ejemplos de código:\n\n{context[:800]}..."
-            elif question_type == 'concept_explanation':
-                # Para explicaciones de conceptos
-                return f"Basándome en la información disponible:\n\n{context[:600]}..."
-            elif question_type == 'syntax_help':
-                # Para ayuda de sintaxis
-                return f"Información sobre sintaxis:\n\n{context[:600]}..."
-            else:
-                # Respuesta general
-                return f"Información relevante:\n\n{context[:600]}..."
-        
-        try:
-            # Seleccionar prompt apropiado
-            prompt_template = self.prompts[question_type]
-            prompt = prompt_template.format(context=context, question=question)
-            
-            # Tokenizar con attention mask explícito
-            inputs = self.tokenizer(
-                prompt, 
-                return_tensors="pt", 
-                truncation=True, 
-                max_length=1024,
-                padding=True,
-                return_attention_mask=True
-            )
-            
-            # Generar respuesta
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    input_ids=inputs['input_ids'],
-                    attention_mask=inputs['attention_mask'],
-                    max_length=inputs['input_ids'].shape[1] + 100,  # Respuestas más cortas
-                    temperature=0.7,  # Balance entre creatividad y precisión
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    repetition_penalty=1.1,  # Evitar repeticiones
-                    no_repeat_ngram_size=3   # Evitar repetición de frases
-                )
-            
-            # Decodificar respuesta
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            # Extraer solo la parte generada (después del prompt)
-            response = response[len(prompt):].strip()
-            
-            # Limpiar respuesta
-            response = re.sub(r'^Respuesta:\s*', '', response)
-            response = re.sub(r'^Explicación:\s*', '', response)
-            response = re.sub(r'\n+', '\n', response)  # Normalizar saltos de línea
-            
-            # Si la respuesta está vacía o es muy corta, usar fallback
-            if not response or len(response) < 20:
-                if context:
-                    return f"Basándome en la información disponible:\n\n{context[:300]}..."
-                else:
-                    return "No pude generar una respuesta específica. ¿Podrías reformular tu pregunta?"
-            
-            return response
-            
-        except Exception as e:
-            print(f"Error en generación: {e}")
-            if context:
-                return f"Basándome en la información disponible:\n\n{context[:300]}..."
-            else:
-                return "Error generando respuesta. ¿Podrías reformular tu pregunta?"
-    
-    def translate_response(self, response: str) -> str:
-        """Traducir respuesta al español si es necesario"""
-        try:
-            # Detectar si ya está en español
-            spanish_words = ['es', 'son', 'está', 'están', 'para', 'con', 'por', 'que', 'como', 'cuando', 'una', 'las', 'los']
-            spanish_count = sum(1 for word in spanish_words if word in response.lower())
-            
-            if spanish_count >= 2:  # Si tiene al menos 2 palabras en español
-                return response
-            
-            # Traducir solo si es necesario
-            translated = self.translator(response[:400])[0]["translation_text"]
-            return translated
-        except:
-            return response
-    
-    def chat(self, question: str) -> str:
-        """Proceso completo de chat RAG - versión MEJORADA"""
-        # 1. Clasificar pregunta
-        question_type = self.classify_question(question)
-        
-        # 2. Recuperar contexto relevante
-        relevant_chunks = self.retrieve_relevant_chunks(question, n_results=3)
-        
-        # 3. Preparar contexto limpio
-        context = self.clean_context(relevant_chunks)
-        
-        # 4. Generar respuesta
-        response = self.generate_response(context, question, question_type)
-        
-        # 5. Traducir si es necesario
-        response = self.translate_response(response)
-        
-        return response
+¿Podrías ser más específico? Por ejemplo:
+- "¿Cómo crear un bucle for en C#?"
+- "¿Qué es Entity Framework?"
+- "¿Cómo conectar a una base de datos SQL Server?"
+- "¿Sintaxis de async/await en C#?" """
     
     def interactive_chat(self):
-        """Modo interactivo de chat - versión limpia"""
-        print("🤖 ChatBot RAG para C# y .NET")
+        """Modo interactivo para probar el chatbot"""
+        print("🤖 CodeHelperNET - Asistente de C# y .NET")
         print("Escribe 'salir' para terminar")
-        print("-" * 40)
+        print("-" * 50)
         
         while True:
             try:
@@ -476,16 +372,204 @@ public class MiClase
                 if not question:
                     continue
                 
-                # Procesar pregunta y mostrar respuesta limpia
+                print("\n🤖 CodeHelperNET está pensando...")
                 response = self.chat(question)
-                print(f"\n🤖 {response}")
+                print(f"\n🤖 CodeHelperNET: {response}")
                 
             except KeyboardInterrupt:
                 print("\n👋 ¡Hasta luego!")
                 break
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(f"\n❌ Error: {e}")
+
+
+class OllamaLLM:
+    """Clase para usar Ollama localmente"""
+    
+    def __init__(self):
+        self.ollama_url = "http://localhost:11434"
+        self.model = "llama2"  # Puedes cambiar a "mistral", "codellama", etc.
+        
+    def generate_response(self, question: str, context: str = "", question_type: str = "general") -> str:
+        """Generar respuesta usando Ollama"""
+        try:
+            # Crear prompt específico para C# y .NET
+            if context:
+                prompt = f"""Eres un experto especializado en C# y .NET. Responde la siguiente pregunta de manera específica, clara y útil.
+
+Contexto disponible:
+{context}
+
+Pregunta: {question}
+
+Instrucciones:
+- Responde SOLO sobre C# y .NET
+- Si la pregunta es sobre sintaxis, proporciona ejemplos de código claros
+- Si es sobre conceptos, explica de manera didáctica
+- Usa el contexto proporcionado para enriquecer tu respuesta
+- Responde en español de manera natural y conversacional
+- Sé específico y directo
+- Incluye ejemplos prácticos cuando sea útil
+- Si es código, usa bloques de código con ```csharp
+
+Respuesta:"""
+            else:
+                prompt = f"""Eres un experto especializado en C# y .NET. Responde la siguiente pregunta de manera específica, clara y útil.
+
+Pregunta: {question}
+
+Instrucciones:
+- Responde SOLO sobre C# y .NET
+- Si la pregunta es sobre sintaxis, proporciona ejemplos de código claros
+- Si es sobre conceptos, explica de manera didáctica
+- Responde en español de manera natural y conversacional
+- Sé específico y directo
+- Incluye ejemplos prácticos cuando sea útil
+- Si es código, usa bloques de código con ```csharp
+
+Respuesta:"""
+
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.7,
+                    "num_predict": 300,
+                    "top_p": 0.9,
+                    "top_k": 40
+                }
+            }
+            
+            response = requests.post(
+                f"{self.ollama_url}/api/generate",
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result.get("response", "")
+            else:
+                print(f"Error de Ollama: {response.status_code} - {response.text}")
+                return ""
+            
+        except Exception as e:
+            print(f"Error con Ollama: {e}")
+            return ""
+
+
+class WebSearcher:
+    """Clase para búsqueda web"""
+    
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+    
+    def is_csharp_related(self, query: str) -> bool:
+        """Verificar si la consulta está relacionada con C#"""
+        csharp_keywords = [
+            'c#', 'csharp', '.net', 'asp.net', 'entity framework', 'linq',
+            'visual studio', 'xamarin', 'blazor', 'wpf', 'winforms',
+            'console application', 'web api', 'mvc', 'razor'
+        ]
+        
+        query_lower = query.lower()
+        return any(keyword in query_lower for keyword in csharp_keywords)
+    
+    def search_web(self, query: str, max_results: int = 3) -> List[Dict[str, str]]:
+        """Buscar información en la web"""
+        try:
+            if not self.is_csharp_related(query):
+                return []
+            
+            # Usar DuckDuckGo para búsqueda
+            search_url = "https://html.duckduckgo.com/html/"
+            params = {
+                'q': f"{query} C# .NET site:docs.microsoft.com OR site:learn.microsoft.com"
+            }
+            
+            response = self.session.get(search_url, params=params, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            results = []
+            
+            # Extraer enlaces de resultados
+            links = soup.find_all('a', class_='result__a')
+            
+            for link in links[:max_results]:
+                url = link.get('href', '')
+                if url and ('docs.microsoft.com' in url or 'learn.microsoft.com' in url):
+                    title = link.get_text(strip=True)
+                    content = self.extract_content_from_url(url)
+                    if content:
+                        results.append({
+                            'title': title,
+                            'url': url,
+                            'content': content[:500]  # Limitar contenido
+                        })
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error en búsqueda web: {e}")
+            return []
+    
+    def extract_content_from_url(self, url: str) -> str:
+        """Extraer contenido de una URL"""
+        try:
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Remover elementos no deseados
+            for element in soup(['script', 'style', 'nav', 'header', 'footer']):
+                element.decompose()
+            
+            # Extraer texto del contenido principal
+            content = soup.get_text()
+            
+            # Limpiar y formatear
+            lines = (line.strip() for line in content.splitlines())
+            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+            text = ' '.join(chunk for chunk in chunks if chunk)
+            
+            return text[:1000]  # Limitar a 1000 caracteres
+            
+        except Exception as e:
+            print(f"Error extrayendo contenido de {url}: {e}")
+            return ""
+
+
+# Función principal para ejecutar el chatbot
+def main():
+    """Función principal para ejecutar el chatbot"""
+    try:
+        print("🚀 Iniciando CodeHelperNET...")
+        chatbot = RAGChatbot()
+        print("✅ CodeHelperNET iniciado correctamente")
+        
+        # Verificar conexión con Ollama
+        try:
+            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            if response.status_code == 200:
+                print("✅ Conexión con Ollama establecida")
+            else:
+                print("⚠️  Ollama no está respondiendo correctamente")
+        except:
+            print("❌ No se pudo conectar con Ollama. Asegúrate de que esté ejecutándose.")
+            print("💡 Para instalar Ollama: https://ollama.ai")
+            print("💡 Para ejecutar: ollama run llama2")
+        
+        chatbot.interactive_chat()
+        
+    except Exception as e:
+        print(f"❌ Error iniciando CodeHelperNET: {e}")
+
 
 if __name__ == "__main__":
-    chatbot = RAGChatbot()
-    chatbot.interactive_chat() 
+    main() 
